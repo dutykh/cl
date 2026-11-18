@@ -1459,7 +1459,8 @@ if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
                 printf '\r\033[K✓ copied the command line\n' >&2
             fi
         }
-        bind -x '"\C-x\C-w": __cl_copy_line'
+        # A shell without line editing (bash -i in a script) has nothing to bind.
+        bind -x '"\C-x\C-w": __cl_copy_line' 2> /dev/null
     fi
 fi
 EOS
