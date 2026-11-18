@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+#
+# Stand-in for the clipboard programs in the tests of cl: wl-copy, wl-paste,
+# xclip, xsel, copyq, pbcopy, pbpaste, tmux and uname are links to this file,
+# which acts according to the name it is called by. A selection is a folder of
+# $CL_STUB_DIR (clipboard or primary) with one file per MIME type and the list
+# of the types in the order they were offered; every call is logged.
+#
+# Author: Dr. Denys Dutykh (Mathematics Department, Khalifa University of
+#         Science and Technology, Abu Dhabi, UAE).
+#
+# Controls: CL_STUB_HANG and CL_STUB_FAIL name the programs that hang or fail,
+# CL_STUB_COPYQ=off makes CopyQ absent, CL_STUB_LINGER=1 leaves a child of
+# wl-copy and xclip running for a while with the streams it was given, as the
+# real programs do, CL_STUB_UNAME is what uname prints, CL_STUB_COPYQ=lost
+# makes "copyq copy" succeed without changing anything, and
+# CL_STUB_COPYQ_READ=empty makes CopyQ read an empty clipboard, as the real
+# one does on GNOME under Wayland.
+
+set -uo pipefail
+
+prog=$(basename "$0")
+dir=${CL_STUB_DIR:?CL_STUB_DIR is not set}
+mkdir -p "$dir"
+printf '%s' "$prog" >> "$dir/calls"
+for a in "$@"; do printf ' [%s]' "$a" >> "$dir/calls"; done
+printf '\n' >> "$dir/calls"
+
+case " ${CL_STUB_HANG:-} " in *" $prog "*) exec sleep 30 ;; esac
+case " ${CL_STUB_FAIL:-} " in *" $prog "*) echo "$prog: stub failure" >&2; exit 1 ;; esac
+
+slot() { printf '%s' "$1" | tr '/;=' '___'; }
+
+# set_sel SELECTION TYPE FILE...: the selection now holds these types.
+set_sel() {
+    local sel=$1
+    shift
+    rm -rf "${dir:?}/$sel"
+    mkdir -p "$dir/$sel"
+    : > "$dir/$sel/types"
+    while [ $# -ge 2 ]; do
+        cp "$2" "$dir/$sel/$(slot "$1")"
+        printf '%s\n' "$1" >> "$dir/$sel/types"
+        shift 2
+    done
+}
+
+clear_sel() {
+    rm -rf "${dir:?}/$1"
+    mkdir -p "$dir/$1"
+    : > "$dir/$1/types"
+}
+
+# get_sel SELECTION TYPE: print the data of the first type that matches.
+get_sel() {
+    local sel=$1 want=$2 t
+    [ -f "$dir/$sel/types" ] || return 1
+    while IFS= read -r t; do
+        case "$want" in
+            text) case "$t" in text/plain* | UTF8_STRING | STRING | TEXT) cat "$dir/$sel/$(slot "$t")"; return 0 ;; esac ;;
+            *) [ "$t" = "$want" ] && { cat "$dir/$sel/$(slot "$t")"; return 0; } ;;
+        esac
+    done < "$dir/$sel/types"
+    return 1
+}
+
+linger() {
+    if [ "${CL_STUB_LINGER:-0}" = 1 ]; then
+        (sleep 3) &
+    fi
+}
+
+tmp="$dir/.stdin.$$"
+trap 'rm -f "$tmp"' EXIT
+
+case "$prog" in
+    uname) printf '%s\n' "${CL_STUB_UNAME:-Linux}" ;;
+    wl-copy)
+        sel=clipboard type=text/plain clear=0
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --version | -v) echo "wl-clipboard 2.2.1 (stub)"; exit 0 ;;
+                --primary | -p) sel=primary ;;
+                --type | -t) type=$2; shift ;;
+                --clear | -c) clear=1 ;;
+            esac
+            shift
+        done
+        if [ "$clear" -eq 1 ]; then clear_sel "$sel"; exit 0; fi
+        cat > "$tmp"
+        set_sel "$sel" "$type" "$tmp"
+        linger
+        ;;
+    wl-paste)
+        sel=clipboard type=text list=0 nonl=0
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --primary | -p) sel=primary ;;
+                --type | -t) type=$2; shift ;;
+                --list-types | -l) list=1 ;;
+                --no-newline | -n) nonl=1 ;;
+            esac
+            shift
+        done
+        if [ "$list" -eq 1 ]; then
+            [ -s "$dir/$sel/types" ] || { echo "Nothing is copied" >&2; exit 1; }
+            cat "$dir/$sel/types"
+            exit 0
+        fi
+        get_sel "$sel" "$type" || { echo "No suitable type of content copied" >&2; exit 1; }
+        # As the real wl-paste: a newline after text only.
+        case "$type" in text | text/*) [ "$nonl" -eq 1 ] || printf '\n' ;; esac
+        ;;
+    xclip)
+        sel=primary type="" out=0
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                -version) echo "xclip version 0.13 (stub)"; exit 0 ;;
+                -selection | -sel) sel=$2; shift ;;
+                -t | -target) type=$2; shift ;;
+                -o | -out) out=1 ;;
+                -i | -in) out=0 ;;
+            esac
+            shift
+        done
+        if [ "$out" -eq 1 ]; then
+            if [ "$type" = TARGETS ]; then cat "$dir/$sel/types" 2> /dev/null; exit 0; fi
+            get_sel "$sel" "${type:-text}" || exit 1
+            exit 0
+        fi
+        cat > "$tmp"
+        if [ ! -s "$tmp" ] && [ -z "$type" ]; then clear_sel "$sel"; exit 0; fi
+        set_sel "$sel" "${type:-UTF8_STRING}" "$tmp"
+        linger
+        ;;
+    xsel)
+        sel=primary mode=output
+        for a in "$@"; do
+            case "$a" in
+                --version) echo "xsel version 1.2.1 (stub)"; exit 0 ;;
+                --clipboard | -b) sel=clipboard ;;
+                --primary | -p) sel=primary ;;
+                --input | -i) mode=input ;;
+                --output | -o) mode=output ;;
+                --clear | -c) mode=clear ;;
+            esac
+        done
+        case "$mode" in
+            input) cat > "$tmp"; set_sel "$sel" UTF8_STRING "$tmp" ;;
+            output) get_sel "$sel" text ;;
+            clear) clear_sel "$sel" ;;
+        esac
+        ;;
+    copyq)
+        [ "${CL_STUB_COPYQ:-on}" = off ] && [ "${1:-}" != --version ] && { echo "CopyQ ERROR: Cannot connect to server! Start CopyQ server first." >&2; exit 1; }
+        case "${1:-}" in
+            --version) echo "CopyQ Clipboard Manager 13.0.0 (stub)" ;;
+            eval) echo 1 ;;
+            copy)
+                shift
+                [ "${CL_STUB_COPYQ:-on}" = lost ] && { echo true; exit 0; }
+                [ "${1:-}" = -- ] && shift
+                args=()
+                n=0
+                while [ $# -ge 2 ]; do
+                    f="$dir/.pair.$$.$n"
+                    if [ "$2" = - ]; then cat > "$f"; else printf '%s' "$2" > "$f"; fi
+                    args+=("$1" "$f")
+                    n=$((n + 1))
+                    shift 2
+                done
+                set_sel clipboard ${args[@]+"${args[@]}"}
+                rm -f "$dir"/.pair.$$.*
+                ;;
+            clipboard)
+                [ "${CL_STUB_COPYQ_READ:-}" = empty ] && exit 0
+                if [ "${2:-}" = '?' ]; then cat "$dir/clipboard/types" 2> /dev/null; exit 0; fi
+                get_sel clipboard "${2:-text}"
+                ;;
+            selection)
+                if [ "${2:-}" = '?' ]; then cat "$dir/primary/types" 2> /dev/null; exit 0; fi
+                get_sel primary "${2:-text}"
+                ;;
+        esac
+        ;;
+    pbcopy) cat > "$tmp"; set_sel clipboard text/plain "$tmp" ;;
+    pbpaste) get_sel clipboard text ;;
+    tmux)
+        case "${1:-}" in
+            -V) echo "tmux 3.5a (stub)" ;;
+            load-buffer) cat > "$tmp"; set_sel tmuxbuffer text/plain "$tmp" ;;
+        esac
+        ;;
+esac
+exit 0

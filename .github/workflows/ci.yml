@@ -1,0 +1,76 @@
+# Continuous integration for cl.
+#
+# Author: Dr. Denys Dutykh (Mathematics Department, Khalifa University of
+#         Science and Technology, Abu Dhabi, UAE).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint
+        run: shellcheck -x cl install.sh tests/run-tests.sh tests/stub/clipstub
+
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the tools
+        run: |
+          bash --version | head -n1
+          perl -e 'printf "perl %vd\n", $^V'
+          file --version | head -n1
+      - name: Run the offline test suite
+        run: tests/run-tests.sh
+      - name: Check the help and the scripts that cl prints
+        run: |
+          ./cl --version
+          ./cl --help > /dev/null
+          ./cl --completion bash | bash -n
+          ./cl --shell-init bash | bash -n
+          ./cl --doctor
+
+  macos-bash-3-2:
+    # The bash that macOS ships (3.2), with the BSD tools, for the program,
+    # its stand-ins and the test suite.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Put /bin/bash first on PATH
+        run: |
+          mkdir -p "$RUNNER_TEMP/oldbash"
+          ln -s /bin/bash "$RUNNER_TEMP/oldbash/bash"
+          echo "$RUNNER_TEMP/oldbash" >> "$GITHUB_PATH"
+      - name: Run the offline test suite under bash 3.2
+        run: |
+          bash --version | head -n1
+          /bin/bash tests/run-tests.sh
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install into a scratch prefix, run, uninstall
+        run: |
+          ./install.sh --prefix "$RUNNER_TEMP/prefix"
+          "$RUNNER_TEMP/prefix/bin/cl" --version
+          test -s "$RUNNER_TEMP/prefix/share/bash-completion/completions/cl"
+          test -s "$RUNNER_TEMP/prefix/share/zsh/site-functions/_cl"
+          ./install.sh --prefix "$RUNNER_TEMP/prefix" --uninstall
+          test ! -e "$RUNNER_TEMP/prefix/bin/cl"
+          ./install.sh --prefix "$RUNNER_TEMP/prefix" --link
+          test -L "$RUNNER_TEMP/prefix/bin/cl"
+          "$RUNNER_TEMP/prefix/bin/cl" --version

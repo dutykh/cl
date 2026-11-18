@@ -1,0 +1,19 @@
+# Files that do not belong in the repository of cl.
+#
+# Author: Dr. Denys Dutykh (Mathematics Department, Khalifa University of
+#         Science and Technology, Abu Dhabi, UAE).
+
+# Editors and the operating system
+*~
+*.swp
+.DS_Store
+.idea/
+.vscode/
+
+# Leftovers of the installer
+*.tmp.*
+
+# Local settings and secrets, never to be committed
+.env
+.env.*
+!.env.example

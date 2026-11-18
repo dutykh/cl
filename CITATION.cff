@@ -1,0 +1,31 @@
+# Dr. Denys Dutykh (Mathematics Department, Khalifa University of Science and Technology, Abu Dhabi, UAE)
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "cl: run a command and put its output on the clipboard"
+type: software
+authors:
+  - family-names: Dutykh
+    given-names: Denys
+    affiliation: "Khalifa University of Science and Technology"
+    orcid: "https://orcid.org/0000-0001-5247-2788"
+repository-code: "https://github.com/dutykh/cl"
+license: LGPL-2.1-or-later
+version: 1.0.0
+date-released: "2026-11-18"
+keywords:
+  - bash
+  - clipboard
+  - cli
+  - wayland
+  - x11
+  - osc52
+  - shell
+  - developer-tools
+abstract: >-
+  Bash program that runs a command and, when the command succeeds, puts what it printed on the
+  clipboard, without the final newline and without colour codes, while the output still appears as
+  usual. A failing command copies nothing and its exit status passes through. It reaches the
+  clipboard through wl-copy, CopyQ, xclip, xsel or pbcopy, and from an SSH session through the
+  terminal itself with the OSC 52 sequence. It also copies the command line with its output as a
+  Markdown block, files and pictures for pasting as attachments, and secrets that are cleared after
+  a delay and kept out of the clipboard history.
