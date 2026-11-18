@@ -123,7 +123,7 @@ The routes are tried in a fixed order, and the first that takes the copy wins. A
 
 ```mermaid
 flowchart TD
-    A["cl runs the command"] --> B{"Did it succeed?"}
+    A["The command runs"] --> B{"Did it succeed?"}
     B -- "No" --> N["Nothing copied,<br/>its status passes through"]
     B -- "Yes" --> C{"An SSH session?"}
     C -- "Yes" --> T["The terminal (OSC 52),<br/>through tmux inside tmux"]
